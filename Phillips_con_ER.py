@@ -2,135 +2,127 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Modelo DA-OA Gastaldi", layout="wide")
+st.set_page_config(page_title="Modelo DA-OA Estándar", layout="wide")
 
-st.title("Modelo Macroeconómico: Transición al Largo Plazo")
-st.markdown("La DA se desplaza por shocks de política. La OA se desplaza por el ajuste de expectativas.")
+st.title("Simulador Macroeconómico: Modelo DA-OA Dinámico")
+st.markdown("Basado en el marco teórico de Gastaldi. La DA responde a la política, la OA al ajuste de expectativas.")
 
-# --- BARRA LATERAL ---
-st.sidebar.header("1. Expectativas")
-tipo_exp = st.sidebar.radio("Mecanismo de formación:", ["Adaptativas (Ajuste gradual)", "Racionales (Ajuste instantáneo)"])
+# --- BARRA LATERAL: PARÁMETROS ---
+st.sidebar.header("1. Mecanismo de Expectativas")
+tipo_exp = st.sidebar.radio("Tipo:", ["Adaptativas (Ajuste gradual)", "Racionales (Ajuste instantáneo)"])
 
-st.sidebar.header("2. Escenario Inicial (Año 0)")
-m_hat_0 = st.sidebar.number_input("Expansión Monetaria Inicial (M^_0)", value=0.10, step=0.01)
+st.sidebar.header("2. Equilibrio Inicial (Año 0)")
+pi_0 = st.sidebar.number_input("Inflación Inicial ($\pi_0$)", value=0.10, step=0.01)
 
-st.sidebar.header("3. Shocks de Política (A partir del Año 1)")
-m_hat_1 = st.sidebar.slider("Nueva Expansión Monetaria (M^_1)", -0.10, 0.50, 0.20, step=0.01)
-delta_f = st.sidebar.slider("Shock Fiscal (\u0394F)", -5.0, 5.0, 0.0, step=0.5)
+st.sidebar.header("3. Shocks de Política (Año 1 en adelante)")
+m_hat = st.sidebar.slider("Nueva Expansión Monetaria ($\hat{M}$)", -0.10, 0.60, 0.25, step=0.01)
+delta_f = st.sidebar.slider("Shock Fiscal ($\Delta F$)", -10.0, 10.0, 0.0, step=0.5)
 
-st.sidebar.header("4. Parámetros Estructurales")
-y_p = 100.0
-k = st.sidebar.slider("Pendiente OA (k)", 0.1, 2.0, 0.8)
-alpha2 = st.sidebar.slider("Sensibilidad DA a Saldos Reales (\u03B12)", 0.1, 2.0, 1.0)
-alpha1 = st.sidebar.slider("Sensibilidad DA a Política Fiscal (\u03B11)", 0.1, 2.0, 0.5)
+st.sidebar.header("4. Sensibilidades (Pendientes)")
+y_p = 100.0 # Producto Potencial
+k = st.sidebar.slider("Pendiente OA (k)", 0.2, 2.0, 0.7)
+alpha2 = st.sidebar.slider("Sensibilidad DA (alpha2)", 0.2, 3.0, 1.2)
+alpha1 = 0.5 # Sensibilidad fiscal fija
 
-st.sidebar.header("5. Visualización temporal")
-periodos_totales = 25
-t_ver = st.sidebar.slider("Ver curvas en el año (t):", 0, periodos_totales-1, 1)
+st.sidebar.header("5. Control de Tiempo")
+t_max = 20
+t_ver = st.sidebar.slider("Año a visualizar:", 0, t_max, 1)
 
-# --- MOTOR MATEMÁTICO CORREGIDO ---
-def simular():
-    y_hist = [y_p]
-    pi_hist = [m_hat_0]
-    pie_hist = [m_hat_0]
+# --- MOTOR LÓGICO ---
+def calcular_trayectoria():
+    y_h, pi_h, pie_h = [y_p], [pi_0], [pi_0]
     
-    # Equilibrio de Largo Plazo (Estado Estacionario)
-    pi_ss = m_hat_1 + alpha1 * delta_f
+    # Inflación de Largo Plazo (Estado Estacionario)
+    # En el LP: y = yp, por lo tanto pi = m_hat + (alpha1/alpha2)*delta_f
+    pi_ss = m_hat + (alpha1 / alpha2) * delta_f
 
-    for t in range(1, periodos_totales):
+    for t in range(1, t_max + 1):
         if tipo_exp == "Racionales (Ajuste instantáneo)":
             pie_t = pi_ss
             y_t = y_p
             pi_t = pi_ss
         else:
-            # Expectativas Adaptativas (inflación pasada)
-            pie_t = pi_hist[-1]
+            # Adaptativas: pi^e = pi_{t-1}
+            pie_t = pi_h[-1]
             
-            # Equilibrio del período t
-            # DA: pi_t = M^_1 + alpha1*delta_f - (1/alpha2)*(y_t - y_p)
-            # OA: pi_t = pie_t + k*(y_t - y_p)
-            # Igualando DA y OA para despejar (y_t - y_p):
+            # Sistema de Ecuaciones:
+            # DA: pi = (m_hat + (alpha1/alpha2)*delta_f) - (1/alpha2)*(y - y_p)
+            # OA: pi = pie_t + k*(y - y_p)
             
-            interseccion = m_hat_1 + alpha1 * delta_f - pie_t
-            denominador = k + (1 / alpha2)
+            intercepto_da = m_hat + (alpha1 / alpha2) * delta_f
+            # Resolviendo para (y - y_p):
+            gap_y = (intercepto_da - pie_t) / (k + (1 / alpha2))
             
-            y_t = y_p + (interseccion / denominador)
-            pi_t = pie_t + k * (y_t - y_p)
+            y_t = y_p + gap_y
+            pi_t = pie_t + k * gap_y
             
-        y_hist.append(y_t)
-        pi_hist.append(pi_t)
-        pie_hist.append(pie_t)
+        y_h.append(y_t)
+        pi_h.append(pi_t)
+        pie_h.append(pie_t)
         
-    return np.array(y_hist), np.array(pi_hist), np.array(pie_hist), pi_ss
+    return np.array(y_h), np.array(pi_h), np.array(pie_h), pi_ss
 
-y_v, pi_v, pie_v, pi_estacionaria = simular()
+y_v, pi_v, pie_v, pi_ss = calcular_trayectoria()
 
-# --- GRÁFICOS ---
-col1, col2 = st.columns(2)
+# --- INTERFAZ GRÁFICA ---
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader(f"Plano DA-OA (Año t = {t_ver})")
-    fig1, ax1 = plt.subplots(figsize=(8, 6))
-    y_rango = np.linspace(y_p - 15, y_p + 15, 100)
+    st.subheader(f"Plano Inflación - Producto (Año {t_ver})")
+    fig, ax = plt.subplots(figsize=(10, 7))
+    y_range = np.linspace(y_p - 15, y_p + 15, 100)
     
-    # DA y OA en el AÑO 0 (Equilibrio Inicial) - GRIS
-    da_0 = m_hat_0 - (1/alpha2) * (y_rango - y_p)
-    oa_0 = m_hat_0 + k * (y_rango - y_p)
-    ax1.plot(y_rango, da_0, color='lightgray', linestyle='--', label='DA (t=0)')
-    ax1.plot(y_rango, oa_0, color='lightgray', linestyle='--', label='OA (t=0)')
+    # 1. CURVAS AÑO 0 (Gris)
+    da_0 = pi_0 - (1/alpha2) * (y_range - y_p)
+    oa_0 = pi_0 + k * (y_range - y_p)
+    ax.plot(y_range, da_0, color='lightgray', linestyle='--', label='DA inicial (t=0)')
+    ax.plot(y_range, oa_0, color='lightgray', linestyle='--', label='OA inicial (t=0)')
     
+    # 2. CURVAS DINÁMICAS
     if t_ver > 0:
-        # A partir del año 1, la DA salta a su nueva posición y SE QUEDA AHÍ.
-        da_t = m_hat_1 + alpha1 * delta_f - (1/alpha2) * (y_rango - y_p)
+        # La DA se mueve en t=1 y se queda AHÍ
+        da_t = (m_hat + (alpha1 / alpha2) * delta_f) - (1/alpha2) * (y_range - y_p)
+        # La OA se mueve cada período según pie_v[t_ver]
+        oa_t = pie_v[t_ver] + k * (y_range - y_p)
         
-        # La OA se mueve cada año dependiendo de pi^e
-        pie_actual = pie_v[t_ver]
-        oa_t = pie_actual + k * (y_rango - y_p)
+        ax.plot(y_range, da_t, color='blue', linewidth=3, label='Demanda Agregada (DA)')
+        ax.plot(y_range, oa_t, color='red', linewidth=3, label=f'Oferta Agregada (OA t={t_ver})')
         
-        ax1.plot(y_rango, da_t, color='blue', linewidth=2.5, label='DA (Nuevo nivel)')
-        ax1.plot(y_rango, oa_t, color='red', linewidth=2.5, label=f'OA (t={t_ver})')
-        
-        ax1.scatter(y_v[t_ver], pi_v[t_ver], color='black', s=80, zorder=5)
-        ax1.annotate(f"E_{t_ver}", (y_v[t_ver], pi_v[t_ver]), xytext=(5, 5), textcoords='offset points')
+        # Punto de equilibrio actual
+        ax.scatter(y_v[t_ver], pi_v[t_ver], color='black', s=100, zorder=5)
+        ax.annotate(f"E_{t_ver}", (y_v[t_ver], pi_v[t_ver]), xytext=(10, 10), textcoords='offset points', weight='bold')
     else:
-        ax1.scatter(y_p, m_hat_0, color='black', s=80, zorder=5)
-        ax1.annotate("E_0", (y_p, m_hat_0), xytext=(5, 5), textcoords='offset points')
-
-    # OALP (Potencial)
-    ax1.axvline(y_p, color='black', linewidth=1.5, label='OALP')
+        ax.scatter(y_p, pi_0, color='black', s=100, zorder=5)
     
-    # Marcador de Estado Estacionario Final
-    ax1.scatter(y_p, pi_estacionaria, color='green', marker='*', s=150, zorder=6, label='Equilibrio Final LP')
-    ax1.axhline(pi_estacionaria, color='green', linestyle=':', alpha=0.5)
+    # Referencias de Largo Plazo
+    ax.axvline(y_p, color='black', linewidth=1, label='OALP (Potencial)')
+    ax.axhline(pi_ss, color='green', linestyle=':', alpha=0.6, label='$\pi$ de Largo Plazo')
+    ax.scatter(y_p, pi_ss, color='green', marker='*', s=200, label='Equilibrio Final')
 
-    ax1.set_ylim(min(m_hat_0, pi_estacionaria) - 0.1, max(m_hat_0, pi_estacionaria) + 0.15)
-    ax1.set_xlim(y_p - 10, y_p + 10)
-    ax1.set_xlabel("Producto Real (y)")
-    ax1.set_ylabel("Inflación ($\pi$)")
-    ax1.legend(loc='lower right', fontsize='small')
-    ax1.grid(True, linestyle=':', alpha=0.6)
-    st.pyplot(fig1)
+    ax.set_xlabel("Producto Real (y)", fontsize=12)
+    ax.set_ylabel("Tasa de Inflación ($\pi$)", fontsize=12)
+    ax.set_ylim(min(pi_0, pi_ss) - 0.1, max(pi_0, pi_ss) + 0.15)
+    ax.legend(loc='upper right', frameon=True)
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
 
 with col2:
-    st.subheader("Trayectoria (Años 0 a 25)")
-    fig2, (ax2_y, ax2_pi) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+    st.subheader("Series Temporales")
+    # Gráfico de Producto
+    fig_y, ax_y = plt.subplots(figsize=(5, 4))
+    ax_y.plot(y_v, color='blue', marker='.')
+    ax_y.axhline(y_p, color='black', linestyle='--')
+    ax_y.axvline(t_ver, color='red', alpha=0.3)
+    ax_y.set_title("Evolución del Producto")
+    st.pyplot(fig_y)
     
-    # Producto
-    ax2_y.plot(y_v, marker='.', color='royalblue', label='Producto (y)')
-    ax2_y.axhline(y_p, color='black', linestyle='--', label='y_p')
-    ax2_y.axvline(t_ver, color='gray', linestyle=':', alpha=0.5) 
-    ax2_y.set_ylabel("Producto")
-    ax2_y.legend()
-    ax2_y.grid(True, alpha=0.3)
-    
-    # Inflación
-    ax2_pi.plot(pi_v, marker='.', color='firebrick', label='Inflación ($\pi$)')
-    ax2_pi.plot(pie_v, linestyle='--', color='darkorange', linewidth=2, label='Expectativas ($\pi^e$)')
-    ax2_pi.axhline(pi_estacionaria, color='green', linestyle=':', label='$\pi$ Estado Estacionario')
-    ax2_pi.axvline(t_ver, color='gray', linestyle=':', alpha=0.5) 
-    ax2_pi.set_ylabel("Inflación")
-    ax2_pi.set_xlabel("Años (t)")
-    ax2_pi.legend()
-    ax2_pi.grid(True, alpha=0.3)
-    
-    st.pyplot(fig2)
+    # Gráfico de Inflación
+    fig_pi, ax_pi = plt.subplots(figsize=(5, 4))
+    ax_pi.plot(pi_v, color='red', marker='.')
+    ax_pi.plot(pie_v, color='orange', linestyle=':', label='$\pi^e$')
+    ax_pi.axhline(pi_ss, color='green', linestyle='--')
+    ax_pi.axvline(t_ver, color='blue', alpha=0.3)
+    ax_pi.set_title("Evolución de la Inflación")
+    st.pyplot(fig_pi)
+
+st.info("**Guía para la clase:** Notarás que en t=1 la DA salta y genera un aumento del producto (brecha positiva). Desde t=2 en adelante, la DA no cambia, pero la línea roja (OA) sube año tras año buscando la nueva inflación esperada, lo que 'empuja' el equilibrio hacia atrás por la curva de demanda hasta que el producto vuelve al potencial.")
